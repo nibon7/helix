@@ -2509,10 +2509,11 @@ fn run_shell_command(
     Ok(())
 }
 
-fn reset_diff_change(
+fn reset_hunks(
     cx: &mut compositor::Context,
     _args: Args,
     event: PromptEvent,
+    reset_all: bool,
 ) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
@@ -2531,9 +2532,16 @@ fn reset_diff_change(
     let diff_base = diff.diff_base();
     let mut changes = 0;
 
+    let full_selection = Selection::single(0, doc_text.len_chars());
+    let selection = if reset_all {
+        &full_selection
+    } else {
+        doc.selection(view.id)
+    };
+
     let transaction = Transaction::change(
         doc.text(),
-        diff.hunks_intersecting_line_ranges(doc.selection(view.id).line_ranges(doc_text))
+        diff.hunks_intersecting_line_ranges(selection.line_ranges(doc_text))
             .map(|hunk| {
                 changes += 1;
                 let start = diff_base.line_to_char(hunk.before.start as usize);
@@ -2559,6 +2567,22 @@ fn reset_diff_change(
         if changes == 1 { "" } else { "s" }
     ));
     Ok(())
+}
+
+fn reset_diff_change(
+    cx: &mut compositor::Context,
+    _args: Args,
+    event: PromptEvent,
+) -> anyhow::Result<()> {
+    reset_hunks(cx, _args, event, false)
+}
+
+fn reset_buffer_change(
+    cx: &mut compositor::Context,
+    _args: Args,
+    event: PromptEvent,
+) -> anyhow::Result<()> {
+    reset_hunks(cx, _args, event, true)
 }
 
 fn clear_register(
@@ -3706,6 +3730,17 @@ pub const TYPABLE_COMMAND_LIST: &[TypableCommand] = &[
         aliases: &["diffget", "diffg"],
         doc: "Reset the diff change at the cursor position.",
         fun: reset_diff_change,
+        completer: CommandCompleter::none(),
+        signature: Signature {
+            positionals: (0, Some(0)),
+            ..Signature::DEFAULT
+        },
+    },
+    TypableCommand {
+        name: "reset-buffer-change",
+        aliases: &["reset-buffer"],
+        doc: "Reset the diff change of the whole buffer.",
+        fun: reset_buffer_change,
         completer: CommandCompleter::none(),
         signature: Signature {
             positionals: (0, Some(0)),
